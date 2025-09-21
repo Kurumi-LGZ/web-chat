@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实时通讯</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body { display: flex; flex-direction: column; height: 100vh; background: #f0f0f0; }
+    .container { display: flex; flex: 1; padding: 20px; }
+    .chat-window { flex: 3; background: white; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow: hidden; }
+    .user-list { flex: 1; margin-left: 20px; background: white; border-radius: 10px; padding: 15px; }
+    .header { padding: 15px; background: #2c3e50; color: white; text-align: center; }
+    .message-area { height: calc(100% - 120px); padding: 20px; overflow-y: auto; }
+    .input-area { padding: 20px; border-top: 1px solid #eee; display: flex; }
+    #messageInput { flex: 1; padding: 10px; border: 1px solid #eee; border-radius: 25px; outline: none; }
+    #sendBtn { margin-left: 10px; padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 25px; cursor: pointer; }
+    .user-item { margin: 5px 0; padding: 8px; border-radius: 5px; background: #f8f9fa; }
+    .status { color: #2ecc71; font-size: 0.9em; margin-top: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>爆裂吧 现实！粉碎吧 精神！</h1>
+    <div class="status" id="status">链接中...</div>
+  </div>
+  <div class="container">
+    <div class="chat-window">
+      <div class="message-area" id="messageArea"></div>
+      <div class="input-area">
+        <input type="text" id="messageInput" placeholder="输入消息">
+        <button id="sendBtn">发送</button>
+      </div>
+    </div>
+    <div class="user-list" id="userList"></div>
+  </div>
+  <script>
+    const ws = new WebSocket('wss://kuenmi.com/');
+    let currentUser = null; // 存储当前用户自己的唯一信息（仅首次连接时初始化）
+
+    // 连接状态处理
+    ws.addEventListener('open', () => {
+      document.getElementById('status').textContent = 'Banishiment this world!';
+      document.getElementById('status').style.color = '#2ecc71';
+    });
+
+    ws.addEventListener('close', () => {
+      document.getElementById('status').textContent = '连接断开，尝试重新连接...';
+      document.getElementById('status').style.color = '#e74c3c';
+      setTimeout(() => window.location.reload(), 3000); // 自动重连
+    });
+
+    ws.addEventListener('error', (e) => {
+      console.error('WebSocket错误:', e);
+    });
+
+    // 消息接收处理（核心修复：严格初始化currentUser）
+    ws.addEventListener('message', (event) => {
+      const data = JSON.parse(event.data);
+      switch (data.type) {
+        case 'userJoin':
+          // 双重保护：仅首次连接且事件包含user字段时初始化（杜绝覆盖）
+          if (data.user && !currentUser) {
+            currentUser = { ...data.user }; // 深拷贝，避免后续引用污染
+          }
+          // 更新在线人数（所有用户通用，不区分自己/他人）
+          updateUserList(data.onlineCount);
+          break;
+
+        case 'chatMessage':
+          // 直接显示所有接收的消息（后端已确保不发给自己，无需过滤）
+          addMessageToDOM(data.sender, data.message, data.timestamp);
+          scrollToBottom();
+          break;
+
+        case 'userLeave':
+          updateUserList(data.onlineCount); // 简化用户列表，仅显示人数
+          break;
+
+        case 'error':
+          alert(data.message);
+          window.location.reload();
+          break;
+      }
+    });
+
+    // 发送消息处理（使用初始化后的currentUser，确保唯一）
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const input = document.getElementById('messageInput');
+      const msg = input.value.trim();
+      // 确保currentUser已初始化且包含合法userId
+      if (msg && currentUser && currentUser.hasOwnProperty('userId')) {
+        ws.send(JSON.stringify({ type: 'chatMessage', message: msg }));
+        
+        // 本地显示自己的消息（通过userId对比实现颜色区分）
+        const localTimestamp = new Date().toLocaleTimeString();
+        addMessageToDOM(currentUser, msg, localTimestamp);
+        scrollToBottom();
+        input.value = '';
+      }
+    });
+
+    // 键盘发送消息
+    document.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') document.getElementById('sendBtn').click();
+    });
+
+    // 用户列表更新（仅显示在线人数，避免复杂逻辑）
+    function updateUserList(count) {
+      const userList = document.getElementById('userList');
+      userList.innerHTML = `<h4>在线用户（${count}人）</h4>`;
+    }
+
+    // 消息显示（根据userId区分自己和他人的消息样式）
+    function addMessageToDOM(sender, message, timestamp) {
+      const messageArea = document.getElementById('messageArea');
+      // 自己的消息显示为蓝色，他人为灰色（与原有样式一致）
+      const backgroundColor = sender.userId === currentUser?.userId ? '#3498db' : '#f8f9fa';
+      const textColor = sender.userId === currentUser?.userId ? 'white' : '#666';
+      
+      messageArea.innerHTML += `
+        <div style="margin: 10px 0; padding: 15px; border-radius: 10px; background: ${backgroundColor};">
+          <div style="font-size: 0.9em; color: ${textColor};">
+            ${sender.userName} (${timestamp})
+          </div>
+          <div style="margin-top: 5px; color: ${textColor};">
+            ${message}
+          </div>
+        </div>
+      `;
+    }
+
+    // 自动滚动到最新消息
+    function scrollToBottom() {
+      const messageArea = document.getElementById('messageArea');
+      messageArea.scrollTop = messageArea.scrollHeight;
+    }
+  </script>
+</body>
+</html>
