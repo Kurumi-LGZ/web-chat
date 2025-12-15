@@ -35,7 +35,7 @@
     <div class="user-list" id="userList"></div>
   </div>
   <script>
-    const ws = new WebSocket('wss://kuenmi.com/');
+    const ws = new WebSocket('ws://kuenmi.com/');
     let currentUser = null; // 存储当前用户自己的唯一信息（仅首次连接时初始化）
 
     // 连接状态处理
@@ -137,4 +137,5 @@
     }
   </script>
 </body>
+
 </html>
